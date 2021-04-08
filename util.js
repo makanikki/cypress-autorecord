@@ -5,18 +5,18 @@ const sizeInMbytes = (obj) => {
     let objClass;
     if (obj !== null && obj !== undefined) {
       switch (typeof obj) {
-        case 'number':
+        case "number":
           bytes += 8;
           break;
-        case 'string':
+        case "string":
           bytes += obj.length * 2;
           break;
-        case 'boolean':
+        case "boolean":
           bytes += 4;
           break;
-        case 'object':
+        case "object":
           objClass = Object.prototype.toString.call(obj).slice(8, -1);
-          if (objClass === 'Object' || objClass === 'Array') {
+          if (objClass === "Object" || objClass === "Array") {
             for (const key in obj) {
               if (!obj.hasOwnProperty(key)) continue;
               sizeOf(obj[key]);
@@ -33,25 +33,23 @@ const sizeInMbytes = (obj) => {
 
 const guidGenerator = () => {
   const s4 = () => (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
-  return (s4() + s4() + s4() + s4() + s4() + s4() + s4() + s4());
+  return s4() + s4() + s4() + s4() + s4() + s4() + s4() + s4();
 };
 
 const blobToPlain = (blob) => {
   let uri = URL.createObjectURL(blob);
   let xhr = new XMLHttpRequest();
 
-  xhr.open('GET', uri, false);
+  xhr.open("GET", uri, false);
   xhr.send();
 
   URL.revokeObjectURL(uri);
 
-  return blob.type === 'application/json'
-    ? JSON.parse(xhr.response)
-    : xhr.response;
-}
+  return blob.type === "application/json" ? JSON.parse(xhr.response) : xhr.response;
+};
 
 module.exports = {
   sizeInMbytes,
   guidGenerator,
-  blobToPlain
+  blobToPlain,
 };

@@ -6,7 +6,8 @@
   "types": "index.d.ts",
   "scripts": {
     "test": "cypress run --headless",
-    "test:watch": "cypress open"
+    "test:watch": "cypress open",
+    "prettier": "prettier --config .prettierrc.js --check '*'"
   },
   "author": "Nancy Du",
   "keywords": [
@@ -24,6 +25,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "cypress": "6.1.0"
+    "cypress": "6.1.0",
+    "prettier": "^2.2.1"
   }
 }

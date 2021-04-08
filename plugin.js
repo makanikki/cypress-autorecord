@@ -1,13 +1,13 @@
-const path = require('path');
+const path = require("path");
 
 module.exports = (on, config, fs) => {
   // `on` is used to hook into various events Cypress emits
   // `config` is the resolved Cypress config
-  const mocksFolder = path.resolve(config.fixturesFolder, '../mocks');
+  const mocksFolder = path.resolve(config.fixturesFolder, "../mocks");
 
   const readFile = (filePath) => {
     if (fs.existsSync(filePath)) {
-      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      return JSON.parse(fs.readFileSync(filePath, "utf8"));
     }
 
     return null;
@@ -27,7 +27,9 @@ module.exports = (on, config, fs) => {
     const specFiles = fs.readdirSync(config.integrationFolder);
     const mockFiles = fs.readdirSync(mocksFolder);
     mockFiles.forEach((mockName) => {
-      const isMockUsed = specFiles.find((specName) => specName.split('.')[0] === mockName.split('.')[0]);
+      const isMockUsed = specFiles.find(
+        (specName) => specName.split(".")[0] === mockName.split(".")[0],
+      );
       if (!isMockUsed) {
         const mockData = readFile(path.join(mocksFolder, mockName));
         Object.keys(mockData).forEach((testName) => {
@@ -46,7 +48,6 @@ module.exports = (on, config, fs) => {
   };
 
   const removeAllMocks = () => {
-    
     if (fs.existsSync(config.fixturesFolder)) {
       const fixtureFiles = fs.readdirSync(config.fixturesFolder);
       fixtureFiles.forEach((fileName) => {
@@ -64,10 +65,10 @@ module.exports = (on, config, fs) => {
     return null;
   };
 
-  on('task', {
+  on("task", {
     readFile,
     deleteFile,
     cleanMocks,
-    removeAllMocks
+    removeAllMocks,
   });
 };
