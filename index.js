@@ -13,6 +13,8 @@ const recordTests = cypressConfig.recordTests || [];
 const blacklistRoutes = cypressConfig.blacklistRoutes || [];
 const whitelistHeaders = cypressConfig.whitelistHeaders || [];
 const supportedMethods = ['get', 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD'];
+const ignoredContentTypes = ['text/html', 'text/css', 'text/js', 'image/webp', 'font/woff2']
+const ignoredStringsInURLs = ['googletagmanager.com', 'google-analytics.com', 'sockjs-node', 'static']
 
 const fileName = path.basename(
     Cypress.spec.name,
@@ -33,6 +35,11 @@ before(function() {
   }
 });
 
+/**
+ * TODO: Remove dead code
+ * TODO: Make it possible to edit the file of a mock if adding new tests (or check it works)
+ * TODO: Alias requests (at least gql requests)
+ */
 module.exports = function autoRecord() {
   const whitelistHeaderRegexes = whitelistHeaders.map((str) => RegExp(str));
 
@@ -60,51 +67,113 @@ module.exports = function autoRecord() {
     });
   });
 
+
   beforeEach(function() {
     // Reset routes before each test case
     routes = [];
 
-    cy.server({
-      // Filter out blacklisted routes from being recorded and logged
-      ignore: (xhr) => {
-        if (xhr.url) {
-          // TODO: Use blobs
-          return blacklistRoutes.some((route) => xhr.url.includes(route));
-        }
-      },
-      // Here we handle all requests passing through Cypress' server
-      onResponse: (response) => {
-        const url = response.url;
-        const status = response.status;
-        const method = response.method;
-        const data = response.response.body.constructor.name === 'Blob'
-            ? blobToPlain(response.response.body)
-            : response.response.body;
-        const body = response.request.body;
-        const headers = Object.entries(response.response.headers)
-            .filter(([key]) => whitelistHeaderRegexes.some((regex) => regex.test(key)))
-            .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
+    const currentTestMock = routesByTestId[this.currentTest.title]
 
-        // We push a new entry into the routes array
-        // Do not rerecord duplicate requests
-        if (
-          !routes.some(
-              (route) =>
-                route.url === url &&
-              route.body === body &&
-              route.method === method &&
-              // when the response has changed for an identical request signature
-              // add this entry as well.  This is useful for polling-oriented endpoints
-              // that can have varying responses. 
-              route.response === data
-          )
-        ) {
-          routes.push({ url, method, status, data, body, headers });
+    cy.intercept('*', (request) => {
+      // We need to remove this header to prevent the server from
+      // thinking we already know the response and returning nothing
+      delete request.headers['if-none-match']
+
+      const { method } = request;
+
+      function findMatchingURLAndBodyMock(routes) {
+        return routes.find(({url, body}) => url === request.url && body === request.body)
+      }
+
+      function shouldRequestBeIgnored() {
+        const isIgnoredContentType = ignoredContentTypes.some(ct => request.headers.accept.includes(ct));
+        const isIgnoredURL = ignoredStringsInURLs.some(ignoredString => request.url.includes(ignoredString));
+        const isRequestRetrievingJsFile = request.url.includes('.js');
+
+        return isIgnoredContentType || isIgnoredURL || isRequestRetrievingJsFile;
+      }
+
+      if (shouldRequestBeIgnored()) {
+         return request.reply()
+      }
+
+      // We check if the current test already has mocked data
+      if (currentTestMock) { // TODO: refacto to merge ifs
+        const matchingURLAndBodyMock = findMatchingURLAndBodyMock(currentTestMock.routes);
+        // We also check if the current test has a mock matching both the url and the body
+        // We want to handle same url with different body in a different way
+        if (matchingURLAndBodyMock) {
+          return request.reply(matchingURLAndBodyMock.response)
         }
-      },
-      // Disable all routes that are not mocked
-      force404: true
-    });
+      }
+
+      // If the current test is not mocked or it is but the current url/body combo does not match any mocked request
+      if (!currentTestMock || !findMatchingURLAndBodyMock(currentTestMock.routes)) {
+        request.reply(res => {
+          const{url, status, body, headers} = res;
+
+
+          routes.push({ url, method, status, data: body, body: request.body, headers });
+        })
+      }
+
+
+
+
+
+      // If there is no mocked data in routesByTestId[test]
+      // We reply without condition
+      // We grab the response
+      // We store it
+      // We return it
+
+      // If we have mocked data
+      // We check if the url and the body match one of the stored urls/body
+      // If so, we return the data
+      // Else, we reply, grab the response, store it, and return it
+    })
+
+    // cy.server({
+    //   // Filter out blacklisted routes from being recorded and logged
+    //   ignore: (xhr) => {
+    //     if (xhr.url) {
+    //       // TODO: Use blobs
+    //       return blacklistRoutes.some((route) => xhr.url.includes(route));
+    //     }
+    //   },
+    //   // Here we handle all requests passing through Cypress' server
+    //   onResponse: (response) => {
+    //     const url = response.url;
+    //     const status = response.status;
+    //     const method = response.method;
+    //     const data = response.response.body.constructor.name === 'Blob'
+    //         ? blobToPlain(response.response.body)
+    //         : response.response.body;
+    //     const body = response.request.body;
+    //     const headers = Object.entries(response.response.headers)
+    //         .filter(([key]) => whitelistHeaderRegexes.some((regex) => regex.test(key)))
+    //         .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {});
+    //
+    //     // We push a new entry into the routes array
+    //     // Do not rerecord duplicate requests
+    //     if (
+    //       !routes.some(
+    //           (route) =>
+    //             route.url === url &&
+    //           route.body === body &&
+    //           route.method === method &&
+    //           // when the response has changed for an identical request signature
+    //           // add this entry as well.  This is useful for polling-oriented endpoints
+    //           // that can have varying responses. 
+    //           route.response === data
+    //       )
+    //     ) {
+    //       routes.push({ url, method, status, data, body, headers });
+    //     }
+    //   },
+    //   // Disable all routes that are not mocked
+    //   force404: true
+    // });
 
     // check to see if test is being force recorded
     // TODO: change this to regex so it only reads from the beginning of the string
@@ -128,9 +197,9 @@ module.exports = function autoRecord() {
 
       // set the browser's Date to the timestamp at which this spec's endpoints were recorded.
       cy.clock(routesByTestId[this.currentTest.title].timestamp, ['Date']);
-      cy.server({
-        force404: true
-      });
+      // cy.server({
+      //   force404: true
+      // });
 
       routesByTestId[this.currentTest.title].routes.forEach((request) => {
         if (!sortedRoutes[request.method][request.url]) {
@@ -140,7 +209,7 @@ module.exports = function autoRecord() {
         sortedRoutes[request.method][request.url].push(request);
       });
 
-      const createStubbedRoute = (method, url) => {
+      function createStubbedRoute (method, url) {
         let index = 0;
         const response = sortedRoutes[method][url][index];
         const onResponse = () => {
@@ -169,11 +238,11 @@ module.exports = function autoRecord() {
           // This handles requests from the same url but with different request bodies
           onResponse
         });
-      };
+      }
 
       // Stub all recorded routes
       Object.keys(sortedRoutes).forEach((method) => {
-        Object.keys(sortedRoutes[method]).forEach((url) => createStubbedRoute(method, url));
+        // Object.keys(sortedRoutes[method]).forEach((url) => createStubbedRoute(method, url));
       });
     } else {
       // Allow all routes to go through
@@ -187,10 +256,10 @@ module.exports = function autoRecord() {
 
       // This tells Cypress to hook into all types of requests
       supportedMethods.forEach((method) => {
-        cy.route({
-          method,
-          url: '*'
-        });
+        // cy.route({
+        //   method,
+        //   url: '*'
+        // });
       });
     }
 
@@ -203,10 +272,12 @@ module.exports = function autoRecord() {
   afterEach(function() {
     // Check to see if the current test already has mock data or if forceRecord is on
     if (
-      (!routesByTestId[this.currentTest.title]
-      || isTestForceRecord
+      (
+        !routesByTestId[this.currentTest.title]||
+        isTestForceRecord
       || recordTests.includes(this.currentTest.title))
-      && !isCleanMocks
+      &&
+      !isCleanMocks
     ) {
       // Construct endpoint to be saved locally
       const endpoints = routes.map((request) => {
@@ -230,6 +301,7 @@ module.exports = function autoRecord() {
           response: isFileOversized ? undefined : request.data
         };
       });
+
 
       // Delete fixtures if we are overwriting mock data
       if (routesByTestId[this.currentTest.title]) {
